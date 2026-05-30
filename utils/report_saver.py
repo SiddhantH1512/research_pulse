@@ -12,8 +12,6 @@ import re
 from datetime import datetime
 from pathlib import Path
 
-
-# ── HTML wrapper template ─────────────────────────────────────────
 HTML_TEMPLATE = """<!DOCTYPE html>
 <html lang="en">
 <head>
@@ -21,91 +19,164 @@ HTML_TEMPLATE = """<!DOCTYPE html>
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
   <title>{title}</title>
   <style>
-    @import url('https://fonts.googleapis.com/css2?family=Playfair+Display:wght@400;700&family=Source+Serif+4:ital,wght@0,300;0,400;0,600;1,400&display=swap');
+    @import url('https://fonts.googleapis.com/css2?family=Lora:ital,wght@0,400;0,600;1,400&family=Inter:wght@400;500;600&display=swap');
 
+    /* ── Reset ─────────────────────────────────────────────────── */
     *, *::before, *::after {{ box-sizing: border-box; margin: 0; padding: 0; }}
 
+    /* ── Page ──────────────────────────────────────────────────── */
     body {{
-      background: #0e0e18;
-      color: #dcdcec;
-      font-family: 'Source Serif 4', Georgia, serif;
-      font-size: 18px;
-      line-height: 1.75;
-      padding: 3rem 1.5rem;
+      background: #ffffff;
+      color: #1a1a2e;
+      font-family: 'Lora', Georgia, serif;
+      font-size: 19px;
+      line-height: 1.8;
+      padding: 4rem 1.5rem 6rem;
     }}
 
+    /* ── Content width (matches Substack/Medium reading width) ─── */
     .container {{
-      max-width: 760px;
+      max-width: 680px;
       margin: 0 auto;
     }}
 
-    .meta {{
-      font-size: 13px;
-      color: #666680;
+    /* ── Publication meta ───────────────────────────────────────── */
+    .pub-meta {{
+      display: flex;
+      align-items: center;
+      gap: 0.6rem;
       margin-bottom: 2.5rem;
-      letter-spacing: 0.05em;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      color: #888;
+    }}
+    .pub-badge {{
+      background: #f0f0f8;
+      color: #555;
+      padding: 3px 10px;
+      border-radius: 20px;
+      font-size: 11px;
+      font-weight: 600;
+      letter-spacing: 0.06em;
       text-transform: uppercase;
     }}
 
-    h1, h2, h3 {{
-      font-family: 'Playfair Display', Georgia, serif;
-      color: #f0f0fc;
-      line-height: 1.25;
+    /* ── Title ──────────────────────────────────────────────────── */
+    h1 {{
+      font-family: 'Lora', Georgia, serif;
+      font-size: 2.6rem;
+      font-weight: 600;
+      line-height: 1.2;
+      color: #0f0f1a;
+      margin-bottom: 1.2rem;
+      letter-spacing: -0.01em;
     }}
 
-    h1 {{ font-size: 2.4rem; margin-bottom: 0.5rem; }}
-    h2 {{ font-size: 1.5rem; margin: 2.5rem 0 0.8rem; border-bottom: 1px solid #1e1e30; padding-bottom: 0.4rem; }}
-    h3 {{ font-size: 1.2rem; margin: 1.5rem 0 0.5rem; }}
+    /* ── Section headings ───────────────────────────────────────── */
+    h2 {{
+      font-family: 'Inter', sans-serif;
+      font-size: 1.15rem;
+      font-weight: 600;
+      color: #0f0f1a;
+      margin: 2.8rem 0 0.8rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+    }}
 
-    p {{ margin-bottom: 1.2rem; }}
+    h3 {{
+      font-family: 'Lora', Georgia, serif;
+      font-size: 1.25rem;
+      font-weight: 600;
+      color: #1a1a2e;
+      margin: 1.8rem 0 0.5rem;
+    }}
 
+    /* ── Body text ──────────────────────────────────────────────── */
+    p {{ margin-bottom: 1.4rem; }}
+
+    /* ── Lists ──────────────────────────────────────────────────── */
     ul, ol {{
-      margin: 0 0 1.2rem 1.5rem;
+      margin: 0.5rem 0 1.4rem 1.8rem;
     }}
+    li {{ margin-bottom: 0.5rem; }}
 
-    li {{ margin-bottom: 0.4rem; }}
+    /* ── Emphasis ───────────────────────────────────────────────── */
+    strong {{ font-weight: 600; color: #0f0f1a; }}
+    em     {{ font-style: italic; color: #444; }}
 
-    strong {{ color: #f5b800; font-weight: 600; }}
-    em {{ font-style: italic; color: #b0b0cc; }}
-
+    /* ── Pull quote / blockquote ────────────────────────────────── */
     blockquote {{
-      border-left: 3px solid #f5b800;
-      padding: 0.5rem 0 0.5rem 1.2rem;
-      margin: 1.5rem 0;
-      color: #a0a0c0;
+      border-left: 3px solid #d0d0e8;
+      padding: 0.6rem 0 0.6rem 1.4rem;
+      margin: 1.8rem 0;
       font-style: italic;
+      color: #555;
+      font-size: 1.05rem;
     }}
 
-    code {{
-      background: #1a1a2e;
-      padding: 0.15em 0.4em;
-      border-radius: 3px;
-      font-family: 'JetBrains Mono', monospace;
-      font-size: 0.85em;
-      color: #f5b800;
-    }}
-
+    /* ── Section divider ────────────────────────────────────────── */
     hr {{
       border: none;
-      border-top: 1px solid #1e1e30;
-      margin: 2rem 0;
+      border-top: 1px solid #e8e8f0;
+      margin: 2.5rem 0;
     }}
 
+    /* ── Inline code ────────────────────────────────────────────── */
+    code {{
+      background: #f4f4fb;
+      padding: 0.15em 0.4em;
+      border-radius: 3px;
+      font-family: 'JetBrains Mono', 'Courier New', monospace;
+      font-size: 0.85em;
+      color: #5555aa;
+    }}
+
+    /* ── Footer ─────────────────────────────────────────────────── */
     .footer {{
-      margin-top: 4rem;
+      margin-top: 5rem;
       padding-top: 1.5rem;
-      border-top: 1px solid #1e1e30;
+      border-top: 1px solid #e8e8f0;
+      font-family: 'Inter', sans-serif;
       font-size: 12px;
-      color: #444460;
+      color: #aaa;
       text-align: center;
     }}
+
+    /* ── How-to-publish note (strip before publishing) ──────────── */
+    .publish-note {{
+      background: #fffbea;
+      border: 1px solid #f0d060;
+      border-radius: 8px;
+      padding: 12px 16px;
+      margin-bottom: 2.5rem;
+      font-family: 'Inter', sans-serif;
+      font-size: 13px;
+      color: #555;
+      line-height: 1.6;
+    }}
+    .publish-note strong {{ color: #333; font-size: 13px; }}
   </style>
 </head>
 <body>
   <div class="container">
-    <div class="meta">Research Pulse · {domain} · {timestamp}</div>
+
+    <!-- REMOVE THIS BOX BEFORE PUBLISHING -->
+    <div class="publish-note">
+      <strong>📋 Publishing instructions</strong><br>
+      <strong>Substack:</strong> New Post → click ··· menu → Import → upload this file, or open in browser → select all → paste.<br>
+      <strong>Medium:</strong> medium.com/new-story → Import a Story → upload this .html file directly.
+    </div>
+
+    <div class="pub-meta">
+      <span class="pub-badge">Research Pulse</span>
+      <span>{domain}</span>
+      <span>·</span>
+      <span>{timestamp}</span>
+    </div>
+
     {body}
-    <div class="footer">Generated by Research Pulse · {timestamp}</div>
+
+    <div class="footer">Research Pulse · Generated {timestamp}</div>
   </div>
 </body>
 </html>"""
@@ -173,7 +244,7 @@ def save_report(
         body=html_body,
     )
 
-    html_path = folder / f"{base_name}.html"
+    html_path = folder / f"{base_name}_publish.html"
     with open(html_path, "w", encoding="utf-8") as f:
         f.write(html_content)
 

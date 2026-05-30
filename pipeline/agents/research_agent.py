@@ -2,8 +2,9 @@
 Agent 1 — Research Agent
 ─────────────────────────
 Searches the web for hot topics, top voices, key data points, and
-emerging signals in the requested domain. Uses DuckDuckGo for search
-and Claude for structured extraction.
+emerging signals in the requested domain.
+Search priority: Tavily (primary) → DuckDuckGo (fallback)
+Claude handles structured extraction from raw results.
 """
 
 import json
@@ -61,13 +62,21 @@ def _search_ddg(query: str, max_results: int) -> list[dict]:
 
 
 def search_web(query: str, max_results: int = 7, tavily_client=None) -> list[dict]:
-    """Search using Tavily (preferred) or DuckDuckGo (fallback)."""
+    """
+    Search using Tavily (primary) → DuckDuckGo (fallback).
+    Tavily gives richer, more recent content — always preferred when key is set.
+    """
+    # ── Primary: Tavily ───────────────────────────────────────────
     if tavily_client and TAVILY_AVAILABLE:
         results = _search_tavily(tavily_client, query, max_results)
         if results:
             return results
+        # Tavily returned nothing — fall through to DDG
+
+    # ── Fallback: DuckDuckGo ──────────────────────────────────────
     if DDG_AVAILABLE:
         return _search_ddg(query, max_results)
+
     return []
 
 

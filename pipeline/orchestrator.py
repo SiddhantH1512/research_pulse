@@ -70,9 +70,9 @@ def run_pipeline(
     tavily_key = os.getenv("TAVILY_API_KEY", "")
     if tavily_key and TAVILY_AVAILABLE:
         tavily_client = TavilyClient(api_key=tavily_key)
-        log("🔑 Tavily API detected — using premium search", "orchestrator")
+        log("🔑 Tavily API active — using as primary search provider", "orchestrator")
     else:
-        log("🔍 Using DuckDuckGo for search (add TAVILY_API_KEY for better results)", "orchestrator")
+        log("🔍 No Tavily key found — using DuckDuckGo as fallback search", "orchestrator")
 
     # ── Agent 1: Research ─────────────────────────────────────────
     log("", "research")
