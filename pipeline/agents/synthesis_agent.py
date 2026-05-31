@@ -88,7 +88,11 @@ def run_synthesis_agent(
     response = anthropic_client.messages.create(
         model=SYNTHESIS_MODEL,
         max_tokens=SYNTHESIS_MAX_TOKENS,
-        system=SYSTEM,
+        system=[{
+            "type": "text",
+            "text": SYSTEM,
+            "cache_control": {"type": "ephemeral"}
+        }],
         messages=[
             {
                 "role": "user",

@@ -42,6 +42,7 @@ def run_pipeline(
     domain: str,
     depth: str = "Standard",
     output_folder: str = "reports",
+    author_name: str = "",
     callback: Optional[Callable[[str, str], None]] = None,
 ) -> PipelineResult:
     """
@@ -137,6 +138,7 @@ def run_pipeline(
             report_markdown=result.final_report,
             domain=domain,
             output_folder=output_folder,
+            author_name=author_name,
             research_data=result.research_data,
         )
         log(f"✅ Saved → {result.saved_paths['md_path']}", "save")

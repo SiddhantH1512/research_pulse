@@ -28,3 +28,6 @@ SEARCHES_PER_DEPTH = {
 
 # Default output folder (relative to project root)
 DEFAULT_OUTPUT_FOLDER = "reports"
+
+# Author name shown in the published HTML byline (leave blank to omit)
+AUTHOR_NAME = "Siddhant Hardikar"

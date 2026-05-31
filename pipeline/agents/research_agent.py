@@ -195,7 +195,11 @@ def run_research_agent(
     response = anthropic_client.messages.create(
         model=RESEARCH_MODEL,
         max_tokens=RESEARCH_MAX_TOKENS,
-        system=SYSTEM,
+        system=[{
+            "type": "text",
+            "text": SYSTEM,
+            "cache_control": {"type": "ephemeral"}
+        }],
         messages=[
             {
                 "role": "user",

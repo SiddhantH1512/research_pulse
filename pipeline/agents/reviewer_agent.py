@@ -70,7 +70,11 @@ def run_reviewer_agent(
     response = anthropic_client.messages.create(
         model=REVIEWER_MODEL,
         max_tokens=REVIEWER_MAX_TOKENS,
-        system=SYSTEM,
+        system=[{
+            "type": "text",
+            "text": SYSTEM,
+            "cache_control": {"type": "ephemeral"}
+        }],
         messages=[
             {
                 "role": "user",

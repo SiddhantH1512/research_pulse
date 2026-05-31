@@ -97,6 +97,14 @@ html, body, [data-testid="stAppViewContainer"] {
     color: #1c1917;
 }
 
+/* ── Kill the black Streamlit header bar ─────────────────────────── */
+header[data-testid="stHeader"] {
+    background-color: #f7f4ef !important;
+    border-bottom: none !important;
+}
+[data-testid="stDecoration"] { display: none !important; }
+#stDecoration               { display: none !important; }
+
 [data-testid="stSidebar"] {
     background-color: #edeae2 !important;
     border-right: 1px solid #d8d3c8;
@@ -314,6 +322,16 @@ html, body, [data-testid="stAppViewContainer"] {
     border: 1px solid #fcd34d;
 }
 
+/* ══ Hide Streamlit's black top header bar ══════════════════════ */
+header[data-testid="stHeader"] {
+    background-color: #f7f4ef !important;
+    background:       #f7f4ef !important;
+    border-bottom: none !important;
+    box-shadow: none !important;
+}
+[data-testid="stToolbar"] { display: none !important; }
+[data-testid="stDecoration"] { display: none !important; }
+
 /* ══ Streamlit widget overrides ════════════════════════════════════ */
 [data-testid="stTextInput"] input {
     background: #ffffff !important;
@@ -333,14 +351,20 @@ html, body, [data-testid="stAppViewContainer"] {
     color: #1c1917 !important;
 }
 
-/* Run button — primary amber */
-div[data-testid="stSidebar"] .stButton > button {
+/* ══ Run button — override ALL Streamlit button states ════════════ */
+div[data-testid="stSidebar"] .stButton > button,
+div[data-testid="stSidebar"] .stButton > button:link,
+div[data-testid="stSidebar"] .stButton > button:visited,
+div[data-testid="stSidebar"] .stButton > button:focus,
+div[data-testid="stSidebar"] .stButton > button:active {
     background: #b45309 !important;
+    background-color: #b45309 !important;
     color: #ffffff !important;
     font-weight: 700 !important;
     font-size: 0.84rem !important;
     letter-spacing: 0.04em !important;
     border: none !important;
+    outline: none !important;
     border-radius: 7px !important;
     padding: 0.65rem 1.2rem !important;
     width: 100% !important;
@@ -349,11 +373,16 @@ div[data-testid="stSidebar"] .stButton > button {
 }
 div[data-testid="stSidebar"] .stButton > button:hover {
     background: #92400e !important;
+    background-color: #92400e !important;
+    color: #ffffff !important;
 }
-div[data-testid="stSidebar"] .stButton > button:disabled {
-    background: #d0cbc0 !important;
+div[data-testid="stSidebar"] .stButton > button:disabled,
+div[data-testid="stSidebar"] .stButton > button[disabled] {
+    background: #e0dbd3 !important;
+    background-color: #e0dbd3 !important;
     box-shadow: none !important;
     color: #a09080 !important;
+    cursor: not-allowed !important;
 }
 
 /* Suggestion chip buttons */
@@ -539,6 +568,16 @@ with st.sidebar:
                 st.rerun()
 
     # ── Depth & folder ─────────────────────────────────────────────
+    st.markdown('<div class="sb-label" style="margin-top:1.2rem;">Your Name (for byline)</div>',
+                unsafe_allow_html=True)
+    author_name = st.text_input(
+        label="author",
+        label_visibility="collapsed",
+        value="",
+        placeholder="e.g. Siddhant Hardikar",
+        help="Shown in the HTML byline. Leave blank to omit.",
+    )
+
     st.markdown('<div class="sb-label" style="margin-top:1.2rem;">Research Depth</div>',
                 unsafe_allow_html=True)
     depth = st.selectbox(
@@ -659,6 +698,7 @@ if st.session_state.running and not st.session_state.done:
         domain=active_domain,
         depth=depth,
         output_folder=output_folder.strip() or "reports",
+        author_name=author_name.strip(),
         callback=callback,
     )
 
