@@ -26,6 +26,15 @@ from pipeline.agents.synthesis_agent  import run_synthesis_agent
 from pipeline.agents.factual_council  import run_factual_council
 from pipeline.agents.style_council    import run_style_council
 from pipeline.agents.arbiter_agent    import run_arbiter_agent
+from pipeline.templates               import get_template, DEFAULT_TEMPLATE_KEY
+from pipeline.personas                import get_persona, DEFAULT_PERSONA_KEY
+from pipeline.observability           import (
+    traced,
+    wrap_anthropic_client,
+    make_session_id,
+    attach_session_metadata,
+    langsmith_status,
+)
 from utils.report_saver               import save_report
 
 
@@ -33,6 +42,9 @@ from utils.report_saver               import save_report
 class PipelineResult:
     domain:               str
     depth:                str
+    template_key:         str  = DEFAULT_TEMPLATE_KEY
+    persona_key:          str  = DEFAULT_PERSONA_KEY
+    session_id:           str  = ""
     research_data:        dict = field(default_factory=dict)
     pattern_data:         dict = field(default_factory=dict)
     draft_report:         str  = ""
@@ -43,9 +55,12 @@ class PipelineResult:
     error:                Optional[str] = None
 
 
+@traced(run_type="chain", name="research_pipeline")
 def run_pipeline(
     domain: str,
     depth: str = "Standard",
+    template_key: str = DEFAULT_TEMPLATE_KEY,
+    persona_key: str = DEFAULT_PERSONA_KEY,
     output_folder: str = "reports",
     author_name: str = "",
     callback: Optional[Callable[[str, str], None]] = None,
@@ -62,7 +77,33 @@ def run_pipeline(
         if callback:
             callback(msg, agent)
 
-    result = PipelineResult(domain=domain, depth=depth)
+    # ── Look up template + persona, assign session ────────────────
+    template   = get_template(template_key)
+    persona    = get_persona(persona_key)
+    session_id = make_session_id(domain)
+
+    result = PipelineResult(
+        domain=domain,
+        depth=depth,
+        template_key=template.key,
+        persona_key=persona.key,
+        session_id=session_id,
+    )
+
+    # Attach session metadata to the top-level run so LangSmith Threads UI
+    # groups every nested agent trace under this one session.
+    attach_session_metadata(
+        session_id,
+        domain=domain,
+        depth=depth,
+        template=template.key,
+        persona=persona.key,
+    )
+
+    log(langsmith_status(), "orchestrator")
+    log(f"🧵 Session ID: {session_id}", "orchestrator")
+    log(f"🎙️  Persona: {persona.name}", "orchestrator")
+    log(f"📐 Template: {template.name}", "orchestrator")
 
     # ── Validate keys ─────────────────────────────────────────────
     anthropic_key  = os.getenv("ANTHROPIC_API_KEY")
@@ -89,7 +130,9 @@ def run_pipeline(
     else:
         log("⚠️  Groq key missing — Llama lens falling back to Perplexity sonar", "orchestrator")
 
-    anthropic_client = anthropic.Anthropic(api_key=anthropic_key)
+    # Wrap the Anthropic client so LangSmith captures every LLM call inside
+    # Pattern, Synthesis, and Arbiter as a proper LLM-typed sub-trace.
+    anthropic_client = wrap_anthropic_client(anthropic.Anthropic(api_key=anthropic_key))
 
     # ── Step 1: Research (Perplexity) ─────────────────────────────
     log("", "research")
@@ -125,6 +168,8 @@ def run_pipeline(
             domain=domain,
             research_data=result.research_data,
             pattern_data=result.pattern_data,
+            template=template,
+            persona=persona,
             callback=lambda msg: log(msg, "synthesis"),
         )
     except Exception as e:
@@ -153,6 +198,7 @@ def run_pipeline(
         result.style_council = run_style_council(
             draft_report=result.draft_report,
             factual_corrections=result.factual_council.get("corrections_markdown", ""),
+            persona=persona,
             callback=lambda msg: log(msg, "style"),
         )
     except Exception as e:
@@ -167,6 +213,7 @@ def run_pipeline(
             baseline_draft=result.draft_report,
             factual_corrections=result.factual_council.get("corrections_markdown", ""),
             style_council_output=result.style_council,
+            template=template,
             callback=lambda msg: log(msg, "arbiter"),
         )
     except Exception as e:

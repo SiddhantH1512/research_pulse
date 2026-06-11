@@ -28,6 +28,7 @@ from config import (
     FACTUAL_COUNCIL_TEMPERATURE,
 )
 from pipeline.clients.perplexity_client import perplexity_complete
+from pipeline.observability import traced
 
 
 SYSTEM = """You are a fact-checker at a major newsroom with live web access.
@@ -78,6 +79,7 @@ def _strip_reasoning_block(text: str) -> str:
     return cleaned.strip()
 
 
+@traced(run_type="chain", name="factual_council")
 def run_factual_council(
     draft_report: str,
     callback: Optional[Callable[[str], None]] = None,

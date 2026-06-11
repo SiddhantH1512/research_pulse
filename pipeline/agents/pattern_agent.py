@@ -21,7 +21,8 @@ from typing import Callable, Optional
 
 import anthropic
 
-from config import PATTERN_MODEL, PATTERN_MAX_TOKENS, PATTERN_TEMPERATURE
+from config import PATTERN_MODEL, PATTERN_MAX_TOKENS
+from pipeline.observability import traced
 
 
 SYSTEM = """You are a content strategist and media analyst who reverse-engineers why content goes
@@ -107,6 +108,7 @@ def _extract_json(raw: str) -> Optional[dict]:
     return None
 
 
+@traced(run_type="chain", name="pattern_agent")
 def run_pattern_agent(
     anthropic_client: anthropic.Anthropic,
     research_data: dict,

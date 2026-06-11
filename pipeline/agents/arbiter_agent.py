@@ -22,10 +22,12 @@ from typing import Callable, Optional
 
 import anthropic
 
-from config import ARBITER_MODEL, ARBITER_MAX_TOKENS, ARBITER_TEMPERATURE
+from config import ARBITER_MODEL, ARBITER_MAX_TOKENS
+from pipeline.templates import ArticleTemplate, get_template, DEFAULT_TEMPLATE_KEY
+from pipeline.observability import traced
 
 
-SYSTEM = """You are the Editor-in-Chief of a top-tier publication. Three groups of people just sent
+SYSTEM_TEMPLATE = """You are the Editor-in-Chief of a top-tier publication. Three groups of people just sent
 you feedback on a draft, and you have final say on what ships.
 
 INPUTS YOU WILL RECEIVE:
@@ -33,7 +35,15 @@ INPUTS YOU WILL RECEIVE:
   2. FACTUAL CORRECTIONS — a bulleted list from a live-web fact-checker.
   3. STYLE CRITIQUES — three separate lenses (Claude / GPT / Llama), each
      returning JSON critique blocks of the form
-     {original_text, issue, suggested_fix}.
+     {{original_text, issue, suggested_fix}}.
+
+THE ARTICLE STRUCTURE — template: **{template_name}**
+
+The draft must end up with EXACTLY this structure, in this order:
+  • An opening 2-3 sentence hook (no header above it)
+  • A blockquote starting with `> **The key insight:**`
+  • These ## section headers, spelled exactly as shown, in this exact order:
+    {section_list}
 
 YOUR PROTOCOL — apply in this exact order:
 
@@ -53,21 +63,26 @@ B. STYLISTIC FIXES — discretionary.
      - Strip a deliberate point of view
      - Replace a vivid concrete word with a generic one
      - Make conflicting demands (pick the better one, drop the other)
+     - Try to rename, reorder, merge, or delete any of the template section
+       headers listed above
+     - Try to remove or rewrite the `> **The key insight:**` blockquote
    • If a lens returned a `[System Warning: Model feedback unparsed; interpret
      text directly]` block, read its raw text and extract whatever sensible
      suggestions you can find. Ignore noise.
 
 C. PROTECT THE DRAFT'S CORE.
    • Do not restructure the article.
-   • Do not change section headings unless a factual correction demands it.
+   • Do not change section headings — they must match the template list above
+     verbatim.
    • Do not add new sections. Do not remove sections.
+   • Preserve the opening hook (untitled, before the first ## header) and the
+     `> **The key insight:**` blockquote exactly.
    • Preserve the author's perspective, voice, and rhythm choices.
 
 D. OUTPUT.
    • Return ONLY the final markdown report.
    • No preamble. No diff. No commentary. No JSON. No bullet list of what
      you changed.
-   • Keep the original markdown header structure.
 """
 
 
@@ -89,11 +104,13 @@ def _format_council2_for_prompt(style_council_output: dict) -> str:
     return "\n".join(lines).strip()
 
 
+@traced(run_type="chain", name="arbiter_agent")
 def run_arbiter_agent(
     anthropic_client: anthropic.Anthropic,
     baseline_draft: str,
     factual_corrections: str,
     style_council_output: dict,
+    template: Optional[ArticleTemplate] = None,
     callback: Optional[Callable[[str], None]] = None,
 ) -> str:
     """Run Step 6 — the Synthesis Arbiter. Returns the final markdown report."""
@@ -102,12 +119,21 @@ def run_arbiter_agent(
         if callback:
             callback(msg)
 
+    if template is None:
+        template = get_template(DEFAULT_TEMPLATE_KEY)
+
     log("👨‍⚖️ Synthesis Arbiter — Editor-in-Chief assembling final draft")
+    log(f"   📐 Template guardrail: {template.name}")
     log("   📜 Loading baseline draft into memory...")
     log("   🔍 Loading factual corrections (non-negotiable)...")
     log("   🎭 Loading style critiques from all three lenses (discretionary)...")
 
     council2_block = _format_council2_for_prompt(style_council_output)
+
+    system_prompt = SYSTEM_TEMPLATE.format(
+        template_name=template.name,
+        section_list=template.section_list_inline(),
+    )
 
     user_prompt = (
         "Apply the protocol. Return ONLY the final markdown report.\n\n"
@@ -135,7 +161,7 @@ def run_arbiter_agent(
         # temperature=ARBITER_TEMPERATURE,
         system=[{
             "type": "text",
-            "text": SYSTEM,
+            "text": system_prompt,
             "cache_control": {"type": "ephemeral"},
         }],
         messages=[{"role": "user", "content": user_prompt}],

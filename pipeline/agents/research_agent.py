@@ -26,6 +26,7 @@ from config import (
     RESEARCH_MAX_TOKENS,
 )
 from pipeline.clients.perplexity_client import perplexity_complete
+from pipeline.observability import traced
 
 
 SYSTEM = """You are a senior trend analyst at a top-tier research firm.
@@ -100,6 +101,7 @@ def _extract_json(raw: str) -> Optional[dict]:
     return None
 
 
+@traced(run_type="chain", name="research_agent")
 def run_research_agent(
     domain: str,
     depth: str = "Standard",

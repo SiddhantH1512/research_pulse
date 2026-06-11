@@ -49,6 +49,12 @@ from config import (
     GROQ_BASE_URL,
 )
 from pipeline.clients.perplexity_client import perplexity_complete_async
+from pipeline.personas import WriterPersona, UNIVERSAL_BUZZWORDS
+from pipeline.observability import (
+    traced,
+    wrap_anthropic_client,
+    wrap_openai_client,
+)
 
 
 # ─────────────────────────────────────────────────────────────────
@@ -85,16 +91,20 @@ CLAUDE_LENS_SYSTEM = (
     + _OUTPUT_CONTRACT
 )
 
-GPT_LENS_SYSTEM = (
-    "You are an editor obsessed with hunting CORPORATE BUZZWORDS and AI-ISMS.\n"
-    "Flag (and propose fixes for) words and phrases like:\n"
-    "  delve, testament, paramount, leverage, navigate, landscape, paradigm,\n"
-    "  game-changing, seamlessly, robust, holistic, synergies, at the intersection of,\n"
-    "  it is worth noting, importantly, furthermore, moreover, in conclusion,\n"
-    "  in today's rapidly evolving world, unprecedented\n"
-    "Ignore narrative flow and factual accuracy — other lenses handle those.\n"
-    + _OUTPUT_CONTRACT
-)
+
+def _build_gpt_lens_system(persona: Optional[WriterPersona]) -> str:
+    """Compose the GPT lens system prompt — universal AI-isms plus persona extras."""
+    extras = persona.gpt_buzzword_extras if persona else ()
+    all_buzzwords = list(UNIVERSAL_BUZZWORDS) + list(extras)
+    formatted = ", ".join(all_buzzwords)
+    return (
+        "You are an editor obsessed with hunting CORPORATE BUZZWORDS and AI-ISMS.\n"
+        "Flag (and propose fixes for) words and phrases like:\n"
+        f"  {formatted}\n"
+        "Ignore narrative flow and factual accuracy — other lenses handle those.\n"
+        + _OUTPUT_CONTRACT
+    )
+
 
 LLAMA_LENS_SYSTEM = (
     "You are a blunt newsroom editor judging STRUCTURAL GRIT.\n"
@@ -173,13 +183,14 @@ def _build_user_prompt(draft: str, factual_corrections: str) -> str:
     )
 
 
+@traced(run_type="llm", name="style_claude_lens")
 async def _claude_lens(draft: str, factual_corrections: str) -> dict:
     api_key = os.getenv("ANTHROPIC_API_KEY")
     if not api_key:
         return {"lens": "claude", "model": STYLE_CLAUDE_MODEL,
                 "critiques": [], "warning": "ANTHROPIC_API_KEY missing"}
 
-    client = anthropic.AsyncAnthropic(api_key=api_key)
+    client = wrap_anthropic_client(anthropic.AsyncAnthropic(api_key=api_key))
     try:
         resp = await client.messages.create(
             model=STYLE_CLAUDE_MODEL,
@@ -203,20 +214,23 @@ async def _claude_lens(draft: str, factual_corrections: str) -> dict:
     }
 
 
-async def _gpt_lens(draft: str, factual_corrections: str) -> dict:
+@traced(run_type="llm", name="style_gpt_lens")
+async def _gpt_lens(draft: str, factual_corrections: str,
+                    persona: Optional[WriterPersona] = None) -> dict:
     api_key = os.getenv("OPENAI_API_KEY")
     if not api_key:
         return {"lens": "gpt", "model": STYLE_GPT_MODEL,
                 "critiques": [], "warning": "OPENAI_API_KEY missing"}
 
-    client = openai.AsyncOpenAI(api_key=api_key)
+    client = wrap_openai_client(openai.AsyncOpenAI(api_key=api_key))
 
     async def _call(model: str):
         return await client.chat.completions.create(
             model=model,
             max_completion_tokens=STYLE_COUNCIL_MAX_TOKENS,
+            # temperature=STYLE_COUNCIL_TEMPERATURE,
             messages=[
-                {"role": "system", "content": GPT_LENS_SYSTEM},
+                {"role": "system", "content": _build_gpt_lens_system(persona)},
                 {"role": "user",   "content": _build_user_prompt(draft, factual_corrections)},
             ],
         )
@@ -243,6 +257,7 @@ async def _gpt_lens(draft: str, factual_corrections: str) -> dict:
     }
 
 
+@traced(run_type="llm", name="style_llama_lens_groq")
 async def _llama_lens_via_groq(draft: str, factual_corrections: str) -> dict:
     """Preferred path: Llama 3.3 70B on Groq (OpenAI-compatible API)."""
     api_key = os.getenv("GROQ_API_KEY")
@@ -250,7 +265,9 @@ async def _llama_lens_via_groq(draft: str, factual_corrections: str) -> dict:
         return None  # signal caller to try Perplexity fallback
 
     # Groq is OpenAI-compatible — reuse the openai SDK with a base_url.
-    client = openai.AsyncOpenAI(api_key=api_key, base_url=GROQ_BASE_URL)
+    client = wrap_openai_client(
+        openai.AsyncOpenAI(api_key=api_key, base_url=GROQ_BASE_URL)
+    )
     try:
         resp = await client.chat.completions.create(
             model=STYLE_LLAMA_MODEL,
@@ -275,6 +292,7 @@ async def _llama_lens_via_groq(draft: str, factual_corrections: str) -> dict:
     }
 
 
+@traced(run_type="llm", name="style_llama_lens_perplexity")
 async def _llama_lens_via_perplexity(draft: str, factual_corrections: str) -> dict:
     """Fallback path: Llama-backed sonar on Perplexity."""
     if not os.getenv("PERPLEXITY_API_KEY"):
@@ -305,6 +323,7 @@ async def _llama_lens_via_perplexity(draft: str, factual_corrections: str) -> di
     }
 
 
+@traced(run_type="chain", name="style_llama_lens")
 async def _llama_lens(draft: str, factual_corrections: str) -> dict:
     """Try Groq first, fall back to Perplexity sonar if no Groq key."""
     primary = await _llama_lens_via_groq(draft, factual_corrections)
@@ -317,18 +336,21 @@ async def _llama_lens(draft: str, factual_corrections: str) -> dict:
 #  Orchestration entry point
 # ─────────────────────────────────────────────────────────────────
 
-async def _run_council_async(draft: str, factual_corrections: str) -> list[dict]:
+async def _run_council_async(draft: str, factual_corrections: str,
+                             persona: Optional[WriterPersona] = None) -> list[dict]:
     """asyncio.gather the three lenses — total latency ≈ slowest lens."""
     return await asyncio.gather(
         _claude_lens(draft, factual_corrections),
-        _gpt_lens(draft, factual_corrections),
+        _gpt_lens(draft, factual_corrections, persona),
         _llama_lens(draft, factual_corrections),
     )
 
 
+@traced(run_type="chain", name="style_council")
 def run_style_council(
     draft_report: str,
     factual_corrections: str,
+    persona: Optional[WriterPersona] = None,
     callback: Optional[Callable[[str], None]] = None,
 ) -> dict:
     """Synchronous wrapper around the three parallel style lenses."""
@@ -343,8 +365,10 @@ def run_style_council(
         if using_groq else
         f"Llama (Perplexity sonar fallback)"
     )
+    persona_label = persona.name if persona else "(none)"
 
     log("🎭 Council 2 — Parallel Style & Humanization Council")
+    log(f"   🎙️  Persona context: {persona_label}")
     log("   ⚡ Dispatching three lenses concurrently (asyncio.gather)...")
     log(f"      • Claude lens — {STYLE_CLAUDE_MODEL}")
     log(f"      • GPT lens    — {STYLE_GPT_MODEL}")
@@ -352,11 +376,13 @@ def run_style_council(
 
     # Fresh event loop — safe inside Streamlit's sync context.
     try:
-        results = asyncio.run(_run_council_async(draft_report, factual_corrections))
+        results = asyncio.run(_run_council_async(draft_report, factual_corrections, persona))
     except RuntimeError:
         loop = asyncio.new_event_loop()
         try:
-            results = loop.run_until_complete(_run_council_async(draft_report, factual_corrections))
+            results = loop.run_until_complete(
+                _run_council_async(draft_report, factual_corrections, persona)
+            )
         finally:
             loop.close()
 

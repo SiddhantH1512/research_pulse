@@ -551,6 +551,20 @@ with st.sidebar:
             unsafe_allow_html=True,
         )
 
+    # ── LangSmith observability status ────────────────────────────
+    from pipeline.observability import langsmith_status as _ls_status
+    _ls_text = _ls_status()
+    if _ls_text.startswith("LangSmith: ✓"):
+        _ls_bg, _ls_color, _ls_border = "#eef2ff", "#4338ca", "#c7d2fe"
+    else:
+        _ls_bg, _ls_color, _ls_border = "#fefce8", "#a16207", "#fde68a"
+    st.markdown(
+        f'<div style="font-size:0.68rem;color:{_ls_color};margin-bottom:1rem;'
+        f'background:{_ls_bg};padding:6px 10px;border-radius:6px;border:1px solid {_ls_border};">'
+        f'🔭 {_ls_text}</div>',
+        unsafe_allow_html=True,
+    )
+
     # ── Domain input ───────────────────────────────────────────────
     st.markdown('<div class="sb-label">Domain / Topic</div>', unsafe_allow_html=True)
     domain_input = st.text_input(
@@ -609,6 +623,33 @@ with st.sidebar:
         help="Shown in the HTML byline. Leave blank to omit.",
     )
 
+    # ── Writer persona (atomic domain switch) ─────────────────────
+    from pipeline.personas import PERSONAS, DEFAULT_PERSONA_KEY
+    _persona_keys = list(PERSONAS.keys())
+    _persona_default_idx = _persona_keys.index(DEFAULT_PERSONA_KEY)
+    _persona_help = "\n".join(f"• {p.name}: {p.description}" for p in PERSONAS.values())
+
+    st.markdown('<div class="sb-label" style="margin-top:1.2rem;">Writer Persona</div>',
+                unsafe_allow_html=True)
+    persona_key = st.selectbox(
+        label="persona",
+        label_visibility="collapsed",
+        options=_persona_keys,
+        format_func=lambda k: PERSONAS[k].name,
+        index=_persona_default_idx,
+        help=_persona_help,
+    )
+    _persona_obj = PERSONAS[persona_key]
+    _persona_badge_color = "#a16207" if _persona_obj.domain_guardrails else "#666"
+    st.markdown(
+        f'<div style="font-size:0.68rem;color:{_persona_badge_color};margin-top:-4px;'
+        f'line-height:1.4;">'
+        f'<em>{_persona_obj.description}</em>'
+        + ("<br>⚠️ Strict guardrails: knowledge only, no advice." if _persona_obj.domain_guardrails else "")
+        + '</div>',
+        unsafe_allow_html=True,
+    )
+
     st.markdown('<div class="sb-label" style="margin-top:1.2rem;">Research Depth</div>',
                 unsafe_allow_html=True)
     depth = st.selectbox(
@@ -619,13 +660,58 @@ with st.sidebar:
         help="Quick ≈ 2 min · Standard ≈ 4 min · Deep ≈ 7 min",
     )
 
-    st.markdown('<div class="sb-label" style="margin-top:1.2rem;">Output Folder</div>',
+    # ── Article template ──────────────────────────────────────────
+    from pipeline.templates import TEMPLATES, DEFAULT_TEMPLATE_KEY
+    _template_keys = list(TEMPLATES.keys())
+    _default_idx   = _template_keys.index(DEFAULT_TEMPLATE_KEY)
+    _template_help = "\n".join(f"• {t.name}: {t.best_for}" for t in TEMPLATES.values())
+
+    st.markdown('<div class="sb-label" style="margin-top:1.2rem;">Article Template</div>',
                 unsafe_allow_html=True)
-    output_folder = st.text_input(
-        label="folder",
+    template_key = st.selectbox(
+        label="template",
         label_visibility="collapsed",
-        value=str(Path.home() / "research_pulse_reports"),
-        help="Reports saved here as .md and _publish.html",
+        options=_template_keys,
+        format_func=lambda k: TEMPLATES[k].name,
+        index=_default_idx,
+        help=_template_help,
+    )
+    st.markdown(
+        f'<div style="font-size:0.68rem;color:#888;margin-top:-4px;line-height:1.4;">'
+        f'<em>Best for: {TEMPLATES[template_key].best_for}</em></div>',
+        unsafe_allow_html=True,
+    )
+
+    # ── Output folders — auto-set by persona ─────────────────────
+    _BASE = "/Users/siddhant/Desktop/projects/Project Documentation/Research Pulse Project Documentation"
+    _FOLDER_DEFAULTS = {
+        "tech":   {
+            "md":   f"{_BASE}/AI Obsidian Files",
+            "html": f"{_BASE}/AI HTML Files",
+        },
+        "health": {
+            "md":   f"{_BASE}/Health Obsidian Files",
+            "html": f"{_BASE}/Health HTML Files",
+        },
+    }
+    _defaults = _FOLDER_DEFAULTS.get(persona_key, _FOLDER_DEFAULTS["tech"])
+
+    st.markdown('<div class="sb-label" style="margin-top:1.2rem;">Markdown Folder (.md)</div>',
+                unsafe_allow_html=True)
+    md_folder = st.text_input(
+        label="md_folder",
+        label_visibility="collapsed",
+        value=_defaults["md"],
+        help="Obsidian / markdown file saved here",
+    )
+
+    st.markdown('<div class="sb-label" style="margin-top:0.6rem;">HTML Folder (_publish.html)</div>',
+                unsafe_allow_html=True)
+    html_folder = st.text_input(
+        label="html_folder",
+        label_visibility="collapsed",
+        value=_defaults["html"],
+        help="Publish-ready HTML file saved here",
     )
 
     st.markdown("<div style='height:1.2rem'></div>", unsafe_allow_html=True)
@@ -728,7 +814,10 @@ if st.session_state.running and not st.session_state.done:
     result = run_pipeline(
         domain=active_domain,
         depth=depth,
-        output_folder=output_folder.strip() or "reports",
+        template_key=template_key,
+        persona_key=persona_key,
+        md_folder=md_folder.strip(),
+        html_folder=html_folder.strip(),
         author_name=author_name.strip(),
         callback=callback,
     )

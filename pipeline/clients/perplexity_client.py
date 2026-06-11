@@ -19,6 +19,7 @@ from typing import Any, Optional
 import httpx
 
 from config import PERPLEXITY_BASE_URL
+from pipeline.observability import traced
 
 
 _PERPLEXITY_URL = f"{PERPLEXITY_BASE_URL}/chat/completions"
@@ -73,6 +74,7 @@ def _shape(data: dict) -> dict:
 #  Sync
 # ─────────────────────────────────────────────────────────────────
 
+@traced(run_type="llm", name="perplexity_complete")
 def perplexity_complete(
     messages: list[dict],
     model: str = "sonar-pro",
@@ -95,6 +97,7 @@ def perplexity_complete(
 #  Async (used by Council 2)
 # ─────────────────────────────────────────────────────────────────
 
+@traced(run_type="llm", name="perplexity_complete_async")
 async def perplexity_complete_async(
     messages: list[dict],
     model: str = "sonar",
