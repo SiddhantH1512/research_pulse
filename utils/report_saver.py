@@ -185,7 +185,7 @@ def save_report(
     research_data: dict | None = None,
 ) -> dict[str, str]:
     """
-    Save the report — .md and _publish.html to separate folders.
+    Save the report. Markdown and HTML go to separate folders.
 
     Returns dict with md_path, html_path, md_folder, html_folder, base_name.
     """
@@ -198,13 +198,13 @@ def save_report(
     safe_domain = re.sub(r"[^\w\-]", "_", domain.lower())[:40]
     base_name = f"report_{safe_domain}_{ts}"
 
-    # ── Markdown file ─────────────────────────────────────────────
+    # ── Markdown (Obsidian-friendly, no branding) ─────────────────
     md_path = md_dir / f"{base_name}.md"
     with open(md_path, "w", encoding="utf-8") as f:
         f.write(report_markdown)
 
     # ── Publish-ready HTML ────────────────────────────────────────
-    html_body   = _md_to_html_body(report_markdown)
+    html_body  = _md_to_html_body(report_markdown)
     title_match = re.search(r"^##?\s+(.+)$", report_markdown, re.MULTILINE)
     title = title_match.group(1) if title_match else f"Research Report: {domain}"
 
@@ -219,9 +219,9 @@ def save_report(
         f.write(html_content)
 
     return {
-        "md_path":   str(md_path),
-        "html_path": str(html_path),
+        "md_path":     str(md_path),
+        "html_path":   str(html_path),
         "md_folder":   str(md_dir),
         "html_folder": str(html_dir),
-        "base_name": base_name,
+        "base_name":   base_name,
     }
